@@ -9,18 +9,15 @@ on:
         type: string
       site-development:
         description: Confluence site for development
-        required: false
-        default: dev-cul.atlassian.net
+        required: true
         type: string
       site-staging:
         description: Confluence site for staging
-        required: false
-        default: sta-cul.atlassian.net
+        required: true
         type: string
       site-production:
         description: Confluence site for production
-        required: false
-        default: cul.atlassian.net
+        required: true
         type: string
       forge-cli:
         description: Forge CLI package and version
