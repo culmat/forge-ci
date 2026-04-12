@@ -132,7 +132,9 @@ runs:
         ENV="${{ steps.deploy.outputs.env }}"
         VERSION="${{ steps.deploy.outputs.version }}"
         echo "### Deployed to ${ENV}" >> "$GITHUB_STEP_SUMMARY"
-        echo "- **Commit:** \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
         echo "- **Forge version:** \`${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
-        echo "- **Build tag:** \`${BUILD_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
         echo "- **Build action:** \`${{ steps.build_action.outputs.build_action }}\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "- **Commit:** \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+        if [ "$BUILD_TAG" != "$GITHUB_SHA" ]; then
+          echo "- **Build tag:** \`${BUILD_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+        fi
