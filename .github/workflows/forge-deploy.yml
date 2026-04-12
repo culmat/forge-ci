@@ -39,6 +39,11 @@ on:
         required: false
         default: true
         type: boolean
+      pre-build-command:
+        description: Optional command to run before forge build when artifact is missing
+        required: false
+        default: ""
+        type: string
     secrets:
       FORGE_EMAIL:
         required: true
@@ -61,17 +66,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check out shared action
+        uses: actions/checkout@v4
+        with:
+          repository: culmat/forge-ci
+          ref: main
+          path: _forge_ci
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
 
-      - run: npm ci
-
       - run: npx ${{ env.FORGE_CLI }} settings set usage-analytics true
 
       - name: Run shared deploy pipeline
-        uses: culmat/forge-ci/.github/actions/forge-deploy@main
+        uses: ./_forge_ci/.github/actions/forge-deploy
         with:
           target-environment: ${{ inputs.target-environment }}
           site-development: ${{ inputs.site-development }}
@@ -80,3 +90,4 @@ jobs:
           forge-cli: ${{ env.FORGE_CLI }}
           run-install-non-production: ${{ inputs.run-install-non-production }}
           create-release-tag: ${{ inputs.create-release-tag }}
+          pre-build-command: ${{ inputs.pre-build-command }}

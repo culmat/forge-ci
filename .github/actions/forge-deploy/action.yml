@@ -25,6 +25,10 @@ inputs:
     description: Create and push forge-<env>-v<version> tag for non-development
     required: false
     default: "true"
+  pre-build-command:
+    description: Optional command to run before forge build when artifact is missing
+    required: false
+    default: ""
 
 outputs:
   environment:
@@ -54,6 +58,20 @@ runs:
       env:
         FORGE_CLI: ${{ inputs.forge-cli }}
       run: node "${{ github.action_path }}/check-forge-build.mjs"
+
+    - shell: bash
+      if: steps.build_check.outputs.build_exists != 'true'
+      run: npm ci
+
+    - shell: bash
+      if: steps.build_check.outputs.build_exists != 'true' && inputs.pre-build-command != ''
+      run: ${{ inputs.pre-build-command }}
+
+    - shell: bash
+      if: steps.build_check.outputs.build_exists != 'true'
+      env:
+        FORGE_CLI: ${{ inputs.forge-cli }}
+      run: npx "$FORGE_CLI" lint
 
     - shell: bash
       if: steps.build_check.outputs.build_exists != 'true'
@@ -100,6 +118,8 @@ runs:
     - shell: bash
       if: inputs.create-release-tag == 'true' && steps.deploy.outputs.env != 'development' && steps.deploy.outputs.version != ''
       run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         ENV="${{ steps.deploy.outputs.env }}"
         VERSION="${{ steps.deploy.outputs.version }}"
         TAG="forge-${ENV}-v${VERSION}"
