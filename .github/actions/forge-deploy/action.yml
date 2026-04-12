@@ -1,0 +1,118 @@
+name: Forge Deploy Pipeline
+description: Build reuse aware Forge deploy pipeline
+
+inputs:
+  target-environment:
+    description: Target Forge environment
+    required: true
+  site-development:
+    description: Confluence site for development environment
+    required: true
+  site-staging:
+    description: Confluence site for staging environment
+    required: true
+  site-production:
+    description: Confluence site for production environment
+    required: true
+  forge-cli:
+    description: Forge CLI package and version
+    required: true
+  run-install-non-production:
+    description: Run install --upgrade for non-production environments
+    required: false
+    default: "true"
+  create-release-tag:
+    description: Create and push forge-<env>-v<version> tag for non-development
+    required: false
+    default: "true"
+
+outputs:
+  environment:
+    description: Resolved deploy environment
+    value: ${{ steps.deploy.outputs.env }}
+  version:
+    description: Deployed Forge version
+    value: ${{ steps.deploy.outputs.version }}
+  build-action:
+    description: Either reused or created
+    value: ${{ steps.build_action.outputs.build_action }}
+  build-tag:
+    description: Forge build tag used for deploy
+    value: ${{ steps.compute_build_tag.outputs.build_tag }}
+
+runs:
+  using: composite
+  steps:
+    - id: compute_build_tag
+      shell: bash
+      run: |
+        echo "BUILD_TAG=${GITHUB_SHA}" >> "$GITHUB_ENV"
+        echo "build_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+    - id: build_check
+      shell: bash
+      env:
+        FORGE_CLI: ${{ inputs.forge-cli }}
+      run: node "${{ github.action_path }}/check-forge-build.mjs"
+
+    - shell: bash
+      if: steps.build_check.outputs.build_exists != 'true'
+      env:
+        FORGE_CLI: ${{ inputs.forge-cli }}
+      run: npx "$FORGE_CLI" build -t "$BUILD_TAG" --non-interactive --no-verify
+
+    - id: build_action
+      shell: bash
+      run: |
+        if [ "${{ steps.build_check.outputs.build_exists }}" = "true" ]; then
+          echo "build_action=reused" >> "$GITHUB_OUTPUT"
+          echo "Build action: reused existing package for tag $BUILD_TAG"
+        else
+          echo "build_action=created" >> "$GITHUB_OUTPUT"
+          echo "Build action: created new package for tag $BUILD_TAG"
+        fi
+
+    - id: target
+      shell: bash
+      env:
+        TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
+        SITE_DEVELOPMENT: ${{ inputs.site-development }}
+        SITE_STAGING: ${{ inputs.site-staging }}
+        SITE_PRODUCTION: ${{ inputs.site-production }}
+      run: node "${{ github.action_path }}/resolve-target-site.mjs"
+
+    - id: deploy
+      shell: bash
+      env:
+        FORGE_CLI: ${{ inputs.forge-cli }}
+        DEPLOY_ENV: ${{ steps.target.outputs.env }}
+        DEPLOY_SITE: ${{ steps.target.outputs.site }}
+        BUILD_ACTION: ${{ steps.build_action.outputs.build_action }}
+        BUILD_MATCH_COUNT: ${{ steps.build_check.outputs.match_count }}
+      run: node "${{ github.action_path }}/deploy-forge.mjs"
+
+    - shell: bash
+      if: inputs.run-install-non-production == 'true' && steps.deploy.outputs.env != 'production'
+      env:
+        FORGE_CLI: ${{ inputs.forge-cli }}
+      run: npx "$FORGE_CLI" install --non-interactive --upgrade --site "${{ steps.deploy.outputs.site }}" --product confluence -e "${{ steps.deploy.outputs.env }}"
+
+    - shell: bash
+      if: inputs.create-release-tag == 'true' && steps.deploy.outputs.env != 'development' && steps.deploy.outputs.version != ''
+      run: |
+        ENV="${{ steps.deploy.outputs.env }}"
+        VERSION="${{ steps.deploy.outputs.version }}"
+        TAG="forge-${ENV}-v${VERSION}"
+        git tag -af "$TAG" -m "Deployed to ${ENV}"
+        git push origin "$TAG" --force
+
+    - shell: bash
+      if: steps.deploy.outputs.version != ''
+      run: |
+        ENV="${{ steps.deploy.outputs.env }}"
+        VERSION="${{ steps.deploy.outputs.version }}"
+        echo "### Deployed to ${ENV}" >> "$GITHUB_STEP_SUMMARY"
+        echo "- **Commit:** \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "- **Forge version:** \`${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "- **Build tag:** \`${BUILD_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "- **Build action:** \`${{ steps.build_action.outputs.build_action }}\`" >> "$GITHUB_STEP_SUMMARY"

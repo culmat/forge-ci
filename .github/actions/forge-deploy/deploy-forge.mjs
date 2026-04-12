@@ -48,6 +48,7 @@ try {
   }
   throw error;
 }
+
 console.log(deployOutput);
 
 const versionMatch = deployOutput.match(/\[(\d+\.\d+\.\d+)/);

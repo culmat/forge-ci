@@ -64,13 +64,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out shared workflow scripts
-        uses: actions/checkout@v4
-        with:
-          repository: culmat/forge-ci
-          ref: main
-          path: _forge_ci
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
@@ -80,67 +73,13 @@ jobs:
 
       - run: npx ${{ env.FORGE_CLI }} settings set usage-analytics true
 
-      - name: Compute build tag
-        run: echo "BUILD_TAG=${GITHUB_SHA}" >> "$GITHUB_ENV"
-
-      - name: Check existing Forge build
-        id: build_check
-        run: node _forge_ci/scripts/ci/check-forge-build.mjs
-
-      - name: Build
-        if: steps.build_check.outputs.build_exists != 'true'
-        run: npx ${{ env.FORGE_CLI }} build -t "$BUILD_TAG" --non-interactive --no-verify
-
-      - name: Set build action
-        id: build_action
-        run: |
-          if [ "${{ steps.build_check.outputs.build_exists }}" = "true" ]; then
-            echo "build_action=reused" >> "$GITHUB_OUTPUT"
-            echo "Build action: reused existing package for tag $BUILD_TAG"
-          else
-            echo "build_action=created" >> "$GITHUB_OUTPUT"
-            echo "Build action: created new package for tag $BUILD_TAG"
-          fi
-
-      - name: Resolve target site
-        id: target
-        env:
-          TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
-          SITE_DEVELOPMENT: ${{ inputs.site-development }}
-          SITE_STAGING: ${{ inputs.site-staging }}
-          SITE_PRODUCTION: ${{ inputs.site-production }}
-        run: node _forge_ci/scripts/ci/resolve-target-site.mjs
-
-      - name: Deploy
-        id: deploy
-        env:
-          DEPLOY_ENV: ${{ steps.target.outputs.env }}
-          DEPLOY_SITE: ${{ steps.target.outputs.site }}
-          BUILD_ACTION: ${{ steps.build_action.outputs.build_action }}
-          BUILD_MATCH_COUNT: ${{ steps.build_check.outputs.match_count }}
-        run: node _forge_ci/scripts/ci/deploy-forge.mjs
-
-      - name: Install app on non-production
-        if: inputs.run-install-non-production && steps.deploy.outputs.env != 'production'
-        run: |
-          npx ${{ env.FORGE_CLI }} install --non-interactive --upgrade --site "${{ steps.deploy.outputs.site }}" --product confluence -e "${{ steps.deploy.outputs.env }}"
-
-      - name: Tag deployment
-        if: inputs.create-release-tag && steps.deploy.outputs.env != 'development' && steps.deploy.outputs.version != ''
-        run: |
-          ENV="${{ steps.deploy.outputs.env }}"
-          VERSION="${{ steps.deploy.outputs.version }}"
-          TAG="forge-${ENV}-v${VERSION}"
-          git tag -af "$TAG" -m "Deployed to ${ENV}"
-          git push origin "$TAG" --force
-
-      - name: Job summary
-        if: steps.deploy.outputs.version != ''
-        run: |
-          ENV="${{ steps.deploy.outputs.env }}"
-          VERSION="${{ steps.deploy.outputs.version }}"
-          echo "### Deployed to ${ENV}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Commit:** \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Forge version:** \`${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Build tag:** \`${BUILD_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Build action:** \`${{ steps.build_action.outputs.build_action }}\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Run shared deploy pipeline
+        uses: culmat/forge-ci/.github/actions/forge-deploy@main
+        with:
+          target-environment: ${{ inputs.target-environment }}
+          site-development: ${{ inputs.site-development }}
+          site-staging: ${{ inputs.site-staging }}
+          site-production: ${{ inputs.site-production }}
+          forge-cli: ${{ env.FORGE_CLI }}
+          run-install-non-production: ${{ inputs.run-install-non-production }}
+          create-release-tag: ${{ inputs.create-release-tag }}
