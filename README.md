@@ -15,7 +15,7 @@ This repository is mainly for sharing CI/CD logic across [our own repositories](
 If you find this useful, [just do WTF you want to](LICENSE).  
 Prefer pinning a commit hash as we might introduce breaking changes on main.
 Bug reports and other contributions are welcome.
-That said, we optimize this repository for our own operational needs first. 
+That said, we optimize this repository for our own operational needs first.
 
 For that reason we
 
@@ -26,6 +26,12 @@ For that reason we
 ## How our repos consume this
 
 Our own repositories intentionally track `main` (latest) for fast shared updates.
+
+## Development
+
+- `npm install`
+- `npm run check`
+- optional: `act` for local workflow execution
 
 ## License
 

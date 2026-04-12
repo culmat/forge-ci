@@ -1,0 +1,17 @@
+{
+  "name": "forge-ci",
+  "private": true,
+  "license": "WTFPL",
+  "scripts": {
+    "prepare": "husky",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint:workflows": "node scripts/check-actionlint.mjs && actionlint",
+    "lint:scripts": "node --check .github/actions/forge-deploy/check-forge-build.mjs && node --check .github/actions/forge-deploy/resolve-target-site.mjs && node --check .github/actions/forge-deploy/deploy-forge.mjs",
+    "check": "npm run format:check && npm run lint:workflows && npm run lint:scripts"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "prettier": "^3.8.1"
+  }
+}
