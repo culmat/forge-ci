@@ -66,13 +66,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out shared action
-        uses: actions/checkout@v4
-        with:
-          repository: culmat/forge-ci
-          ref: main
-          path: _forge_ci
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
@@ -81,7 +74,7 @@ jobs:
       - run: npx ${{ env.FORGE_CLI }} settings set usage-analytics true
 
       - name: Run shared deploy pipeline
-        uses: ./_forge_ci/.github/actions/forge-deploy
+        uses: culmat/forge-ci/.github/actions/forge-deploy@main
         with:
           target-environment: ${{ inputs.target-environment }}
           site-development: ${{ inputs.site-development }}
