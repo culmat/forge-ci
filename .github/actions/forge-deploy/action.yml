@@ -29,6 +29,14 @@ inputs:
     description: Optional command to run before forge build when artifact is missing
     required: false
     default: ""
+  maintain-latest-version:
+    description: |
+      After a successful deploy, write the assigned Forge version to the
+      `LATEST_VERSION` environment variable (with a semver guard so backports
+      to older majors never overwrite a newer stored value). Consuming apps
+      can read this var in a resolver and render an "upgrade available" hint.
+    required: false
+    default: "false"
 
 outputs:
   environment:
@@ -43,6 +51,12 @@ outputs:
   build-tag:
     description: Forge build tag used for deploy
     value: ${{ steps.compute_build_tag.outputs.build_tag }}
+  latest-version-action:
+    description: |
+      What the LATEST_VERSION update step did: initialized, updated,
+      skipped-downgrade, skipped-read-error, or empty when the feature
+      wasn't enabled for this run.
+    value: ${{ steps.deploy.outputs.latest_version_action }}
 
 runs:
   using: composite
@@ -107,6 +121,7 @@ runs:
         DEPLOY_SITE: ${{ steps.target.outputs.site }}
         BUILD_ACTION: ${{ steps.build_action.outputs.build_action }}
         BUILD_MATCH_COUNT: ${{ steps.build_check.outputs.match_count }}
+        MAINTAIN_LATEST_VERSION: ${{ inputs.maintain-latest-version }}
       run: node "${{ github.action_path }}/deploy-forge.mjs"
 
     - shell: bash
@@ -137,4 +152,10 @@ runs:
         echo "- **Commit:** \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
         if [ "$BUILD_TAG" != "$GITHUB_SHA" ]; then
           echo "- **Build tag:** \`${BUILD_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        LV_ACTION="${{ steps.deploy.outputs.latest_version_action }}"
+        if [ -n "$LV_ACTION" ]; then
+          LV_BEFORE="${{ steps.deploy.outputs.latest_version_before }}"
+          LV_AFTER="${{ steps.deploy.outputs.latest_version_after }}"
+          echo "- **LATEST_VERSION:** \`${LV_ACTION}\` (\`${LV_BEFORE:-—}\` → \`${LV_AFTER}\`)" >> "$GITHUB_STEP_SUMMARY"
         fi

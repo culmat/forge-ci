@@ -44,6 +44,15 @@ on:
         required: false
         default: ""
         type: string
+      maintain-latest-version:
+        description: |
+          After a successful deploy, write the assigned Forge version to the
+          `LATEST_VERSION` environment variable (backport-safe: semver guard
+          prevents downgrades). Consuming apps can read this var at runtime
+          to render an "upgrade available" hint.
+        required: false
+        default: false
+        type: boolean
     secrets:
       FORGE_EMAIL:
         required: true
@@ -84,3 +93,4 @@ jobs:
           run-install-non-production: ${{ inputs.run-install-non-production }}
           create-release-tag: ${{ inputs.create-release-tag }}
           pre-build-command: ${{ inputs.pre-build-command }}
+          maintain-latest-version: ${{ inputs.maintain-latest-version }}

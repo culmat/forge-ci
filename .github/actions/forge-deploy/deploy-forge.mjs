@@ -10,6 +10,7 @@ const site = process.env.DEPLOY_SITE;
 const buildAction = process.env.BUILD_ACTION ?? "unknown";
 const buildMatchCount = process.env.BUILD_MATCH_COUNT ?? "0";
 const outputPath = process.env.GITHUB_OUTPUT;
+const maintainLatestVersion = process.env.MAINTAIN_LATEST_VERSION === "true";
 
 if (!buildTag) {
   throw new Error("BUILD_TAG environment variable is required.");
@@ -57,3 +58,123 @@ const version = versionMatch ? versionMatch[1] : "";
 appendFileSync(outputPath, `env=${envName}\n`);
 appendFileSync(outputPath, `site=${site}\n`);
 appendFileSync(outputPath, `version=${version}\n`);
+
+// Optional post-deploy: update a `LATEST_VERSION` Forge environment variable
+// with the version just deployed. This lets the installed app render an
+// "upgrade available" hint in its UI by comparing its own runtime
+// `getAppContext().appVersion` against this stored pointer.
+//
+// Backport guard: we only overwrite when the new version is strictly greater
+// than the stored one. Deploying v8.5.0 after v9.2.0 already exists must not
+// clobber the v9 pointer, otherwise admins on v8.4.0 would stop seeing the
+// "upgrade to major 9" signal.
+if (maintainLatestVersion && version) {
+  maintainLatestVersionVar(envName, version);
+}
+
+/**
+ * Parses "X.Y.Z" into a [major, minor, patch] tuple. Returns null for
+ * anything that doesn't match the pattern exactly.
+ */
+function parseSemver(v) {
+  const m = String(v)
+    .trim()
+    .match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+/**
+ * Compare two semver strings. Returns -1 if a < b, 0 if equal, 1 if a > b.
+ * Returns null if either input is not parseable (callers treat as "can't
+ * compare safely → don't overwrite").
+ */
+function compareSemver(a, b) {
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  if (!pa || !pb) return null;
+  for (let i = 0; i < 3; i += 1) {
+    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Read the current value of the `LATEST_VERSION` Forge variable. Returns:
+ *   - the value string when found and parseable
+ *   - `null` when the variable is absent
+ *   - `undefined` when the CLI call failed (signal "unknown — don't overwrite")
+ */
+function readStoredLatestVersion(env) {
+  try {
+    const out = execSync(`npx ${forgeCli} variables list -e "${env}"`, {
+      encoding: "utf8",
+    });
+    // `variables list` prints a table where each variable sits on its own
+    // line. Match the LATEST_VERSION token anchored to start-of-line, with
+    // whitespace between the key and value. Trailing encryption flags etc.
+    // after the value aren't our concern — we only want the value token.
+    const m = out.match(/^LATEST_VERSION\s+(\S+)/m);
+    return m ? m[1] : null;
+  } catch (error) {
+    console.warn(
+      `Failed to read current LATEST_VERSION: ${error.message}. Will skip update.`,
+    );
+    return undefined;
+  }
+}
+
+function maintainLatestVersionVar(env, newVersion) {
+  const stored = readStoredLatestVersion(env);
+  let action;
+  let before = stored ?? "";
+
+  if (stored === undefined) {
+    action = "skipped-read-error";
+  } else if (!parseSemver(newVersion)) {
+    action = "skipped-unparseable-new";
+  } else if (stored === null) {
+    action = "initialized";
+  } else {
+    const cmp = compareSemver(newVersion, stored);
+    if (cmp === null) {
+      // Stored value is not parseable — treat as corrupt and overwrite so the
+      // var recovers on this deploy. (Intentionally different from the
+      // read-error case: here we *did* read a value, it's just garbage.)
+      action = "initialized-overwrite-corrupt";
+    } else if (cmp <= 0) {
+      action = "skipped-downgrade";
+    } else {
+      action = "updated";
+    }
+  }
+
+  if (
+    action === "initialized" ||
+    action === "updated" ||
+    action === "initialized-overwrite-corrupt"
+  ) {
+    try {
+      execSync(
+        `npx ${forgeCli} variables set -e "${env}" LATEST_VERSION "${newVersion}"`,
+        { stdio: "inherit" },
+      );
+      console.log(
+        `LATEST_VERSION ${action}: "${before}" -> "${newVersion}" (activates on next deploy).`,
+      );
+    } catch (error) {
+      console.error(
+        `Failed to set LATEST_VERSION: ${error.message}. Continuing.`,
+      );
+      action = "skipped-write-error";
+    }
+  } else {
+    console.log(
+      `LATEST_VERSION ${action}: stored "${stored ?? ""}", deployed "${newVersion}".`,
+    );
+  }
+
+  appendFileSync(outputPath, `latest_version_before=${before}\n`);
+  appendFileSync(outputPath, `latest_version_after=${newVersion}\n`);
+  appendFileSync(outputPath, `latest_version_action=${action}\n`);
+}
