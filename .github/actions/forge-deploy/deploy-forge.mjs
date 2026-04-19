@@ -101,27 +101,48 @@ function compareSemver(a, b) {
 
 /**
  * Read the current value of the `LATEST_VERSION` Forge variable. Returns:
- *   - the value string when found and parseable
+ *   - the value string when found
  *   - `null` when the variable is absent
  *   - `undefined` when the CLI call failed (signal "unknown — don't overwrite")
+ *
+ * Uses `--json` so we never have to parse the CLI's human-formatted table.
+ * Shape normalisation below accepts either `[{ key, value }]` or
+ * `{ KEY: value }` layouts because the Forge CLI has historically returned
+ * both for similar commands.
  */
 function readStoredLatestVersion(env) {
+  let raw;
   try {
-    const out = execSync(`npx ${forgeCli} variables list -e "${env}"`, {
+    raw = execSync(`npx ${forgeCli} variables list -e "${env}" --json`, {
       encoding: "utf8",
     });
-    // `variables list` prints a table where each variable sits on its own
-    // line. Match the LATEST_VERSION token anchored to start-of-line, with
-    // whitespace between the key and value. Trailing encryption flags etc.
-    // after the value aren't our concern — we only want the value token.
-    const m = out.match(/^LATEST_VERSION\s+(\S+)/m);
-    return m ? m[1] : null;
   } catch (error) {
     console.warn(
       `Failed to read current LATEST_VERSION: ${error.message}. Will skip update.`,
     );
     return undefined;
   }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    console.warn(
+      `Could not parse 'variables list --json' output: ${error.message}. Will skip update.`,
+    );
+    return undefined;
+  }
+
+  if (Array.isArray(parsed)) {
+    const entry = parsed.find(
+      (e) => e && (e.key ?? e.name) === "LATEST_VERSION",
+    );
+    return entry?.value ?? null;
+  }
+  if (parsed && typeof parsed === "object") {
+    return parsed.LATEST_VERSION ?? null;
+  }
+  return null;
 }
 
 function maintainLatestVersionVar(env, newVersion) {
