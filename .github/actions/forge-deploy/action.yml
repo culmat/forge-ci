@@ -128,7 +128,22 @@ runs:
       if: inputs.run-install-non-production == 'true' && steps.deploy.outputs.env != 'production'
       env:
         FORGE_CLI: ${{ inputs.forge-cli }}
-      run: npx "$FORGE_CLI" install --non-interactive --upgrade --site "${{ steps.deploy.outputs.site }}" --product confluence -e "${{ steps.deploy.outputs.env }}"
+        SITE: ${{ steps.deploy.outputs.site }}
+        ENV: ${{ steps.deploy.outputs.env }}
+      run: |
+        LOG=$(mktemp)
+        set +e
+        npx "$FORGE_CLI" install --non-interactive --upgrade --site "$SITE" --product confluence -e "$ENV" 2>&1 | tee "$LOG"
+        RC=${PIPESTATUS[0]}
+        set -e
+        if [ "$RC" -ne 0 ]; then
+          if grep -qi "Could not find an installation" "$LOG"; then
+            echo "::notice::No existing installation on $SITE for env $ENV — performing fresh install"
+            npx "$FORGE_CLI" install --non-interactive --site "$SITE" --product confluence -e "$ENV"
+          else
+            exit "$RC"
+          fi
+        fi
 
     - shell: bash
       if: inputs.create-release-tag == 'true' && steps.deploy.outputs.env != 'development' && steps.deploy.outputs.version != ''
