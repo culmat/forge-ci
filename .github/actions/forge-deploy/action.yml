@@ -112,9 +112,23 @@ runs:
 
     - shell: bash
       if: steps.build_check.outputs.build_exists != 'true'
+      name: forge build (retry on transient Atlassian asset fetch)
       env:
         FORGE_CLI: ${{ inputs.forge-cli }}
-      run: npx "$FORGE_CLI" build -t "$BUILD_TAG" --non-interactive --no-verify
+      # `forge build` downloads a runtime wrapper asset from atl-paas.net and, like
+      # `forge lint`, intermittently dies mid-response ("Premature close"). Unlike lint
+      # the build must succeed, so this is a plain retry with backoff — no "proceed".
+      run: |
+        set +e  # composite shell runs with `bash -e`; inspect the exit code ourselves
+        for attempt in 1 2 3 4; do
+          npx "$FORGE_CLI" build -t "$BUILD_TAG" --non-interactive --no-verify
+          rc=$?
+          [ "$rc" -eq 0 ] && exit 0
+          echo "::warning::forge build attempt ${attempt}/4 failed (rc=${rc}); retrying…"
+          sleep $((attempt * 15))
+        done
+        echo "::error::forge build failed after 4 attempts"
+        exit 1
 
     - id: build_action
       shell: bash
