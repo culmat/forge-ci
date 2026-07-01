@@ -22,7 +22,7 @@ on:
       forge-cli:
         description: Forge CLI package and version
         required: false
-        default: "@forge/cli@12"
+        default: "@forge/cli@13"
         type: string
       node-version:
         description: Node.js version for the workflow
