@@ -93,6 +93,7 @@ runs:
       # warn and proceed (code is already gated by ESLint in the pre-build step). A
       # genuine lint failure (anything else) fails fast — no retry, non-zero exit.
       run: |
+        set +e  # composite shell runs with `bash -e`; we inspect forge lint's exit code ourselves
         upstream_re='Invalid response body while trying to fetch|Premature close|ECONNRESET|ETIMEDOUT|socket hang up'
         for attempt in 1 2 3; do
           out="$(npx "$FORGE_CLI" lint 2>&1)"; rc=$?
