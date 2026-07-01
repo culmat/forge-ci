@@ -83,9 +83,21 @@ runs:
 
     - shell: bash
       if: steps.build_check.outputs.build_exists != 'true'
+      name: forge lint (retry on transient swagger fetch)
       env:
         FORGE_CLI: ${{ inputs.forge-cli }}
-      run: npx "$FORGE_CLI" lint
+      # `forge lint` fetches Atlassian's OpenAPI spec from developer.atlassian.com and
+      # intermittently dies mid-response ("Invalid response body … Premature close").
+      # That's an upstream network flake, not a code defect — retry a few times so it
+      # doesn't fail the pipeline. Real lint errors still fail on every attempt.
+      run: |
+        for attempt in 1 2 3; do
+          if npx "$FORGE_CLI" lint; then exit 0; fi
+          echo "::warning::forge lint attempt ${attempt}/3 failed (often a transient developer.atlassian.com fetch); retrying…"
+          sleep $((attempt * 10))
+        done
+        echo "::error::forge lint failed after 3 attempts"
+        exit 1
 
     - shell: bash
       if: steps.build_check.outputs.build_exists != 'true'
